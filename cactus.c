@@ -168,10 +168,14 @@ void editorRefreshScreen() {
     struct abuf ab = ABUF_INIT;
 
     // clear screen using VT100 escape sequences
+    abAppend(&ab, "\x1b[?25l", 6);
     abAppend(&ab, "\x1b[2J", 4); // writing 4 bytes out to the terminal
     abAppend(&ab, "\x1b[H", 3); // position cursor
 
     editorDrawRows(&ab);
+
+    abAppend(&ab, "\x1b[H", 3);
+    abAppend(&ab, "\x1b[?25h", 6);
 
     write(STDOUT_FILENO, ab.b, ab.len);
     abFree(&ab);
