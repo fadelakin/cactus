@@ -158,6 +158,7 @@ void editorDrawRows(struct abuf *ab) {
     for (y = 0; y < E.screenRows; y++) {
         abAppend(ab, "~", 1);
 
+        abAppend(ab, "\x1b[K", 3);
         if (y < E.screenRows -1) {
             abAppend(ab, "\r\n", 2);
         }
@@ -169,7 +170,6 @@ void editorRefreshScreen() {
 
     // clear screen using VT100 escape sequences
     abAppend(&ab, "\x1b[?25l", 6);
-    abAppend(&ab, "\x1b[2J", 4); // writing 4 bytes out to the terminal
     abAppend(&ab, "\x1b[H", 3); // position cursor
 
     editorDrawRows(&ab);
