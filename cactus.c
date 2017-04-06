@@ -18,8 +18,12 @@
 struct termios orig_termios; // original terminal attributes
 
 /*** terminal ***/
+
 // error handling
 void die(const char *s) {
+    write(STDOUT_FILENO, "\x1b[2J", 4);
+    write(STDOUT_FILENO, "\x1b[H", 3);
+
     perror(s);
     exit(1);
 }
@@ -74,6 +78,7 @@ char editorReadKey() {
 void editorRefreshScreen() {
     // clear screen using VT100 escape sequences
     write(STDOUT_FILENO, "\x1b[2J", 4); // writing 4 bytes out to the terminal
+    write(STDOUT_FILENO, "\x1b[H", 3); // position cursor
 }
 
 /*** input ***/
@@ -84,8 +89,10 @@ void editorProcessKeypress() {
 
     switch(c) {
         case CTRL_KEY('q'):
-        exit(0);
-        break;
+            write(STDOUT_FILENO, "\x1b[2J", 4);
+            write(STDOUT_FILENO, "\x1b[H", 3);
+            exit(0);
+            break;
     }
 }
 
