@@ -10,6 +10,10 @@
 #include <unistd.h> // need for input
 
 
+/*** defines ***/
+
+#define CTRL_KEY(k) ((k) & 0x1f)
+
 /*** data ***/
 struct termios orig_termios; // original terminal attributes
 
@@ -72,7 +76,7 @@ int main() {
         }
 
         // if input is 'q', exit
-        if (c == 'q') break;
+        if (c == CTRL_KEY('q')) break;
     }
 
     return 0;
