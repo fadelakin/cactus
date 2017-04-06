@@ -69,6 +69,13 @@ char editorReadKey() {
     return c;
 }
 
+/*** output ***/
+
+void editorRefreshScreen() {
+    // clear screen using VT100 escape sequences
+    write(STDOUT_FILENO, "\x1b[2J", 4); // writing 4 bytes out to the terminal
+}
+
 /*** input ***/
 
 // wait for keypress and handle it
@@ -87,6 +94,7 @@ int main() {
     enableRawMode();
 
     while (1) {
+        editorRefreshScreen();
         editorProcessKeypress();
     }
 
