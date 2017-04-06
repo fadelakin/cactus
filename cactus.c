@@ -21,6 +21,7 @@
 
 // contain editor state
 struct editorConfig {
+    int cx, cy;
     int screenRows;
     int screenCols;
     struct termios orig_termios; // original terminal attributes
@@ -193,7 +194,10 @@ void editorRefreshScreen() {
 
     editorDrawRows(&ab);
 
-    abAppend(&ab, "\x1b[H", 3);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
+    abAppend(&ab, buf, strlen(buf));
+
     abAppend(&ab, "\x1b[?25h", 6);
 
     write(STDOUT_FILENO, ab.b, ab.len);
@@ -219,6 +223,9 @@ void editorProcessKeypress() {
 
 // initialize all fields in the E struct
 void initEditor() {
+    E.cx = 0; // horizontal coordinate of cursor
+    E.cy = 0; // vertical coordinate of cursor
+
     if (getWindowSize(&E.screenRows, &E.screenCols) == -1) die("getWindowSize");
 }
 
