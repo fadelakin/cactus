@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <termios.h> // turn off echoing
 #include <unistd.h> // need for input
 
@@ -119,29 +120,61 @@ int getWindowSize(int *rows, int *cols) {
     }
 }
 
+/***
+append buffer
+- do one big write to make sure the whole screen updates at once
+***/
+
+struct abuf {
+    char *b;
+    int len;
+};
+
+# define ABUF_INIT {NULL, 0}
+
+void abAppend(struct abuf *ab, const char *s, int len) {
+    // allocate enough memory to hold new string
+    // realloc() will either extend the size of the block of memory we already have allocated or free it
+    char *new = realloc(ab->b, ab->len + len);
+
+    if (new == NULL) return;
+    memcpy(&new[ab->len], s, len);
+    ab->b = new;
+    ab->len += len;
+}
+
+// destructor that deallocates the dynamic memory used by an abuf
+void abFree(struct abuf *ab) {
+    // free the current block of memory and allocating a new block of memory somewhere else.
+    free(ab->b);
+}
+
 /*** output ***/
 
 // handle drawing each row of the buffer of text being edited
 // drawing 24 rows for now
-void editorDrawRows() {
+void editorDrawRows(struct abuf *ab) {
     int y;
     for (y = 0; y < E.screenRows; y++) {
-        write(STDOUT_FILENO, "~", 1);
+        abAppend(ab, "~", 1);
 
         if (y < E.screenRows -1) {
-            write(STDOUT_FILENO, "\r\n", 2);
+            abAppend(ab, "\r\n", 2);
         }
     }
 }
 
 void editorRefreshScreen() {
+    struct abuf ab = ABUF_INIT;
+
     // clear screen using VT100 escape sequences
-    write(STDOUT_FILENO, "\x1b[2J", 4); // writing 4 bytes out to the terminal
-    write(STDOUT_FILENO, "\x1b[H", 3); // position cursor
+    abAppend(&ab, "\x1b[2J", 4); // writing 4 bytes out to the terminal
+    abAppend(&ab, "\x1b[H", 3); // position cursor
 
-    editorDrawRows();
+    editorDrawRows(&ab);
 
-    write(STDOUT_FILENO, "\x1b[H", 3);
+    write(STDOUT_FILENO, ab.b, ab.len);
+    abFree(&ab);
 }
 
 /*** input ***/
