@@ -59,24 +59,35 @@ void enableRawMode() {
         die("tcsetattr");
 }
 
+// wait for one keypress and return it
+char editorReadKey() {
+    int nread;
+    char c;
+    while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
+        if (nread == -1 && errno != EAGAIN) die("read");
+    }
+    return c;
+}
+
+/*** input ***/
+
+// wait for keypress and handle it
+void editorProcessKeypress() {
+    char c = editorReadKey();
+
+    switch(c) {
+        case CTRL_KEY('q'):
+        exit(0);
+        break;
+    }
+}
+
 /*** init ***/
 int main() {
     enableRawMode();
 
     while (1) {
-        char c = '\0';
-        if(read(STDIN_FILENO, &c, 1) == -1 && errno != EAGAIN)
-            die("read");
-        // display keypresses
-        // isprint() tests whether a character is printable
-        if (isprint(c)) {
-            printf("%d ('%c')\r\n", c, c);
-        } else {
-            printf("%d\r\n", c);
-        }
-
-        // if input is 'q', exit
-        if (c == CTRL_KEY('q')) break;
+        editorProcessKeypress();
     }
 
     return 0;
