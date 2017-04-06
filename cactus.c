@@ -75,10 +75,22 @@ char editorReadKey() {
 
 /*** output ***/
 
+// handle drawing each row of the buffer of text being edited
+void editorDrawRows() {
+    int y;
+    for (y = 0; y < 24; y++) {
+        write(STDOUT_FILENO, "~\r\n", 3);
+    }
+}
+
 void editorRefreshScreen() {
     // clear screen using VT100 escape sequences
     write(STDOUT_FILENO, "\x1b[2J", 4); // writing 4 bytes out to the terminal
     write(STDOUT_FILENO, "\x1b[H", 3); // position cursor
+
+    editorDrawRows();
+
+    write(STDOUT_FILENO, "\x1b[H", 3);
 }
 
 /*** input ***/
