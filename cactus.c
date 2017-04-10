@@ -2,11 +2,18 @@
 // to run cactus, './cactus'
 
 /*** includes ***/
+
+#define _DEFAULT_SOURCE
+#define _BSD_SOURCE
+#define _GNU_SOURCE
+
 #include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
+#include <sys/types.h>
 #include <termios.h> // turn off echoing
 #include <unistd.h> // need for input
 
@@ -31,11 +38,19 @@ enum editorKey {
 
 /*** data ***/
 
+// editor row
+typedef struct erow {
+    int size;
+    char *chars;
+} erow;
+
 // contain editor state
 struct editorConfig {
     int cx, cy;
     int screenRows;
     int screenCols;
+    int numRows;
+    erow row;
     struct termios orig_termios; // original terminal attributes
 };
 
@@ -178,6 +193,31 @@ int getWindowSize(int *rows, int *cols) {
     }
 }
 
+/*** file i/o ***/
+
+// open and read file from disk
+void editorOpen(char *filename) {
+    // read and display the first line of the file
+    FILE *fp = fopen(filename, "r");
+    if (!fp) die("fopen");
+
+    char *line = NULL;
+    ssize_t linecap = 0;
+    ssize_t linelen;
+    linelen = getline(&line, &linecap, fp);
+    if(linelen != -1) {
+        while(linelen > 0 && (line[linelen -1] == '\n' || line[linelen - 1] == '\r'))
+            linelen--;
+        E.row.size = linelen;
+        E.row.chars = malloc(linelen + 1);
+        memcpy(E.row.chars, line, linelen);
+        E.row.chars[linelen] = '\0';
+        E.numRows = 1;
+    }
+    free(line);
+    fclose(fp);
+}
+
 /***
 append buffer
 - do one big write to make sure the whole screen updates at once
@@ -214,23 +254,30 @@ void abFree(struct abuf *ab) {
 void editorDrawRows(struct abuf *ab) {
     int y;
     for (y = 0; y < E.screenRows; y++) {
-
-        if(y == E.screenRows / 3) {
-            char welcome[80];
-            int welcomeLen = snprintf(welcome, sizeof(welcome),
+        // check if we are currently drawing a row that is part of the text buffer
+        // or a row that comes after the end of the text buffer
+        if(y >= E.numRows) {
+            if(E.numRows == 0 && y == E.screenRows / 3) {
+                char welcome[80];
+                int welcomeLen = snprintf(welcome, sizeof(welcome),
                 "Cactus -- version %s",
                 CACTUS_VERSION);
-            if(welcomeLen > E.screenCols) welcomeLen = E.screenCols;
-            // center welcome message
-            int padding = (E.screenCols - welcomeLen) / 2;
-            if(padding) {
+                if(welcomeLen > E.screenCols) welcomeLen = E.screenCols;
+                // center welcome message
+                int padding = (E.screenCols - welcomeLen) / 2;
+                if(padding) {
+                    abAppend(ab, "~", 1);
+                    padding--;
+                }
+                while(padding--) abAppend(ab, " ", 1);
+                abAppend(ab, welcome, welcomeLen);
+            } else {
                 abAppend(ab, "~", 1);
-                padding--;
             }
-            while(padding--) abAppend(ab, " ", 1);
-            abAppend(ab, welcome, welcomeLen);
         } else {
-            abAppend(ab, "~", 1);
+            int len = E.row.size;
+            if(len > E.screenCols) len = E.screenCols;
+            abAppend(ab, E.row.chars, len);
         }
 
         abAppend(ab, "\x1b[K", 3);
@@ -331,13 +378,17 @@ void editorProcessKeypress() {
 void initEditor() {
     E.cx = 0; // horizontal coordinate of cursor
     E.cy = 0; // vertical coordinate of cursor
+    E.numRows = 0;
 
     if (getWindowSize(&E.screenRows, &E.screenCols) == -1) die("getWindowSize");
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     enableRawMode();
     initEditor();
+    if(argc >= 2) {
+        editorOpen(argv[1]);
+    }
 
     while (1) {
         editorRefreshScreen();
