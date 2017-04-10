@@ -50,7 +50,7 @@ struct editorConfig {
     int screenRows;
     int screenCols;
     int numRows;
-    erow row;
+    erow *row; // an array of erow structs to store multiple lines
     struct termios orig_termios; // original terminal attributes
 };
 
@@ -193,6 +193,20 @@ int getWindowSize(int *rows, int *cols) {
     }
 }
 
+/*** row operations ***/
+
+void editorAppendRow(char *s, size_t len) {
+    // allocate space for a new erow and then copy the given string to a new erow at the end of E.row array
+    E.row = realloc(E.row, sizeof(erow) * (E.numRows + 1));
+
+    int at = E.numRows;
+    E.row[at].size = len;
+    E.row[at].chars = malloc(len + 1);
+    memcpy(E.row[at].chars, s, len);
+    E.row[at].chars[len] = '\0';
+    E.numRows++;
+}
+
 /*** file i/o ***/
 
 // open and read file from disk
@@ -205,14 +219,11 @@ void editorOpen(char *filename) {
     ssize_t linecap = 0;
     ssize_t linelen;
     linelen = getline(&line, &linecap, fp);
-    if(linelen != -1) {
+    // read entire file into E.row
+    while((linelen = getline(&line, &linecap, fp)) != -1) {
         while(linelen > 0 && (line[linelen -1] == '\n' || line[linelen - 1] == '\r'))
             linelen--;
-        E.row.size = linelen;
-        E.row.chars = malloc(linelen + 1);
-        memcpy(E.row.chars, line, linelen);
-        E.row.chars[linelen] = '\0';
-        E.numRows = 1;
+        editorAppendRow(line, linelen);
     }
     free(line);
     fclose(fp);
@@ -275,9 +286,9 @@ void editorDrawRows(struct abuf *ab) {
                 abAppend(ab, "~", 1);
             }
         } else {
-            int len = E.row.size;
+            int len = E.row[y].size;
             if(len > E.screenCols) len = E.screenCols;
-            abAppend(ab, E.row.chars, len);
+            abAppend(ab, E.row[y].chars, len);
         }
 
         abAppend(ab, "\x1b[K", 3);
@@ -379,6 +390,7 @@ void initEditor() {
     E.cx = 0; // horizontal coordinate of cursor
     E.cy = 0; // vertical coordinate of cursor
     E.numRows = 0;
+    E.row = NULL;
 
     if (getWindowSize(&E.screenRows, &E.screenCols) == -1) die("getWindowSize");
 }
