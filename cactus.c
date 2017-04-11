@@ -47,6 +47,7 @@ typedef struct erow {
 // contain editor state
 struct editorConfig {
     int cx, cy;
+    int rowOff; // row offset: what row of the file the user is currently scrolled to
     int screenRows;
     int screenCols;
     int numRows;
@@ -260,14 +261,30 @@ void abFree(struct abuf *ab) {
 
 /*** output ***/
 
+// check if the cursor has moved outside of the visible window
+// if so, adjust E.rowOff so the cursor is just inside the visible window
+void editorScroll() {
+    // if the cursor is above the visible window, scroll up to where the cursor is
+    if(E.cy < E.rowOff) {
+        E.rowOff = E.cy;
+    }
+
+    // if the cursor is past the bottom of the visible window, scroll down to where the cursor is
+    // but not past the end of the file
+    if(E.cy >= E.rowOff + E.screenRows) {
+        E.rowOff = E.cy - E.screenRows + 1;
+    }
+}
+
 // handle drawing each row of the buffer of text being edited
 // drawing 24 rows for now
 void editorDrawRows(struct abuf *ab) {
     int y;
     for (y = 0; y < E.screenRows; y++) {
+        int fileRow = y + E.rowOff;
         // check if we are currently drawing a row that is part of the text buffer
         // or a row that comes after the end of the text buffer
-        if(y >= E.numRows) {
+        if(fileRow >= E.numRows) {
             if(E.numRows == 0 && y == E.screenRows / 3) {
                 char welcome[80];
                 int welcomeLen = snprintf(welcome, sizeof(welcome),
@@ -286,9 +303,9 @@ void editorDrawRows(struct abuf *ab) {
                 abAppend(ab, "~", 1);
             }
         } else {
-            int len = E.row[y].size;
+            int len = E.row[fileRow].size;
             if(len > E.screenCols) len = E.screenCols;
-            abAppend(ab, E.row[y].chars, len);
+            abAppend(ab, E.row[fileRow].chars, len);
         }
 
         abAppend(ab, "\x1b[K", 3);
@@ -299,6 +316,8 @@ void editorDrawRows(struct abuf *ab) {
 }
 
 void editorRefreshScreen() {
+    editorScroll();
+
     struct abuf ab = ABUF_INIT;
 
     // clear screen using VT100 escape sequences
@@ -308,7 +327,7 @@ void editorRefreshScreen() {
     editorDrawRows(&ab);
 
     char buf[32];
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowOff) + 1, E.cx + 1);
     abAppend(&ab, buf, strlen(buf));
 
     abAppend(&ab, "\x1b[?25h", 6);
@@ -339,7 +358,7 @@ void editorMoveCursor(int key) {
             }
             break;
         case ARROW_DOWN:
-            if(E.cy != E.screenRows - 1) {
+            if(E.cy < E.numRows) {
                 E.cy++;
             }
             break;
@@ -389,6 +408,7 @@ void editorProcessKeypress() {
 void initEditor() {
     E.cx = 0; // horizontal coordinate of cursor
     E.cy = 0; // vertical coordinate of cursor
+    E.rowOff = 0; // scrolled to the top by default
     E.numRows = 0;
     E.row = NULL;
 
