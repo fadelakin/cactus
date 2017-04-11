@@ -48,6 +48,7 @@ typedef struct erow {
 struct editorConfig {
     int cx, cy;
     int rowOff; // row offset: what row of the file the user is currently scrolled to
+    int colOff; // column offset
     int screenRows;
     int screenCols;
     int numRows;
@@ -274,6 +275,15 @@ void editorScroll() {
     if(E.cy >= E.rowOff + E.screenRows) {
         E.rowOff = E.cy - E.screenRows + 1;
     }
+
+    // horizontal scrolling
+    if(E.cx < E.colOff) {
+        E.colOff = E.cx;
+    }
+
+    if(E.cx >= E.colOff + E.screenCols) {
+        E.colOff = E.cx - E.screenCols + 1;
+    }
 }
 
 // handle drawing each row of the buffer of text being edited
@@ -303,9 +313,10 @@ void editorDrawRows(struct abuf *ab) {
                 abAppend(ab, "~", 1);
             }
         } else {
-            int len = E.row[fileRow].size;
+            int len = E.row[fileRow].size - E.colOff;
+            if(len < 0) len = 0;
             if(len > E.screenCols) len = E.screenCols;
-            abAppend(ab, E.row[fileRow].chars, len);
+            abAppend(ab, &E.row[fileRow].chars[E.colOff], len);
         }
 
         abAppend(ab, "\x1b[K", 3);
@@ -327,7 +338,7 @@ void editorRefreshScreen() {
     editorDrawRows(&ab);
 
     char buf[32];
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowOff) + 1, E.cx + 1);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowOff) + 1, (E.cx - E.colOff) + 1);
     abAppend(&ab, buf, strlen(buf));
 
     abAppend(&ab, "\x1b[?25h", 6);
@@ -341,14 +352,25 @@ void editorRefreshScreen() {
 // move cursor with w,a,s,d keys
 // w - up, a - left, s - down, d - right
 void editorMoveCursor(int key) {
+    // check if cursor is on an actual line
+    erow *row = (E.cy >= E.numRows) ? NULL : &E.row[E.cy];
+
     switch(key) {
         case ARROW_LEFT:
             if(E.cx != 0) {
                 E.cx--;
+            } else if(E.cy > 0) {
+                // allow user to press '<-' at beginning of line to move to end of previous line
+                E.cy--;
+                E.cx = E.row[E.cy].size;
+            } else if(row && E.cx == row->size) {
+                // allow user to press '->' at the end of line to go to beginning of next line
+                E.cy++;
+                E.cx = 0;
             }
             break;
         case ARROW_RIGHT:
-            if(E.cx != E.screenCols - 1) {
+            if(row && E.cx < row->size) {
                 E.cx++;
             }
             break;
@@ -362,6 +384,13 @@ void editorMoveCursor(int key) {
                 E.cy++;
             }
             break;
+    }
+
+    // snap cursor to the end of line
+    row = (E.cy >= E.numRows) ? NULL : &E.row[E.cy];
+    int rowLen = row ? row->size : 0;
+    if(E.cx > rowLen) {
+        E.cx = rowLen;
     }
 }
 
@@ -409,6 +438,7 @@ void initEditor() {
     E.cx = 0; // horizontal coordinate of cursor
     E.cy = 0; // vertical coordinate of cursor
     E.rowOff = 0; // scrolled to the top by default
+    E.colOff = 0;
     E.numRows = 0;
     E.row = NULL;
 
