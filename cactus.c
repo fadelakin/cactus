@@ -50,6 +50,7 @@ typedef struct erow {
 // contain editor state
 struct editorConfig {
     int cx, cy;
+    int rx;  // index into the render field
     int rowOff; // row offset: what row of the file the user is currently scrolled to
     int colOff; // column offset
     int screenRows;
@@ -200,6 +201,24 @@ int getWindowSize(int *rows, int *cols) {
 
 /*** row operations ***/
 
+// convert a chars index into a render index
+int editorRowCxToRx(erow *row, int cx) {
+    int rx = 0;
+    int j;
+    // loop through all the characters to the left of cx and figure out how many spaces each tab takes up
+    for(j = 0; j < cx; j++) {
+        if(row->chars[j] == '\t') {
+            // find how many columns we are to the right of the last tab stop
+            // then subtract that from CACTUS_TAB_STOP - 1
+            // to find out how many columns we are to the left of the next tab stop
+            // then add that amount to rx to get just to the left of the next tab stop
+            rx += (CACTUS_TAB_STOP - 1) - (rx % CACTUS_TAB_STOP);
+        }
+        rx++; // get us right on the next tab stop
+    }
+    return rx;
+}
+
 // use the chars string of an erow to fill the contents of the render string
 void editorUpdateRow(erow *row) {
     int tabs = 0;
@@ -299,6 +318,11 @@ void abFree(struct abuf *ab) {
 // check if the cursor has moved outside of the visible window
 // if so, adjust E.rowOff so the cursor is just inside the visible window
 void editorScroll() {
+    E.rx = 0;
+    if(E.cy < E.numRows) {
+        E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
+    }
+
     // if the cursor is above the visible window, scroll up to where the cursor is
     if(E.cy < E.rowOff) {
         E.rowOff = E.cy;
@@ -311,12 +335,12 @@ void editorScroll() {
     }
 
     // horizontal scrolling
-    if(E.cx < E.colOff) {
-        E.colOff = E.cx;
+    if(E.rx < E.colOff) {
+        E.colOff = E.rx;
     }
 
-    if(E.cx >= E.colOff + E.screenCols) {
-        E.colOff = E.cx - E.screenCols + 1;
+    if(E.rx >= E.colOff + E.screenCols) {
+        E.colOff = E.rx - E.screenCols + 1;
     }
 }
 
@@ -372,7 +396,7 @@ void editorRefreshScreen() {
     editorDrawRows(&ab);
 
     char buf[32];
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowOff) + 1, (E.cx - E.colOff) + 1);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowOff) + 1, (E.rx - E.colOff) + 1);
     abAppend(&ab, buf, strlen(buf));
 
     abAppend(&ab, "\x1b[?25h", 6);
@@ -471,6 +495,7 @@ void editorProcessKeypress() {
 void initEditor() {
     E.cx = 0; // horizontal coordinate of cursor
     E.cy = 0; // vertical coordinate of cursor
+    E.rx = 0;
     E.rowOff = 0; // scrolled to the top by default
     E.colOff = 0;
     E.numRows = 0;
