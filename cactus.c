@@ -57,6 +57,7 @@ struct editorConfig {
     int screenCols;
     int numRows;
     erow *row; // an array of erow structs to store multiple lines
+    char *filename; // filename for status bar
     struct termios orig_termios; // original terminal attributes
 };
 
@@ -266,6 +267,9 @@ void editorAppendRow(char *s, size_t len) {
 
 // open and read file from disk
 void editorOpen(char *filename) {
+    free(E.filename);
+    E.filename = strdup(filename);
+
     // read and display the first line of the file
     FILE *fp = fopen(filename, "r");
     if (!fp) die("fopen");
@@ -378,10 +382,29 @@ void editorDrawRows(struct abuf *ab) {
         }
 
         abAppend(ab, "\x1b[K", 3);
-        if (y < E.screenRows -1) {
-            abAppend(ab, "\r\n", 2);
+        // make room for status bar
+        abAppend(ab, "\r\n", 2);
+    }
+}
+
+void editorDrawStatusBar(struct abuf *ab) {
+    abAppend(ab, "\x1b[1;4;7m", 4); // bold and invert colors in status bar
+    char status[80], rstatus[80];
+    int len = snprintf(status, sizeof(status), "%.20s - %d lines",
+        E.filename ? E.filename : "[No Name]", E.numRows);
+    int rLen = snprintf(rstatus, sizeof(rstatus), "%d/%d", E.cy + 1, E.numRows);
+    if(len > E.screenCols) len = E.screenCols;
+    abAppend(ab, status, len);
+    while (len < E.screenCols) {
+        if(E.screenCols - len == rLen) {
+            abAppend(ab, rstatus, rLen);
+            break;
+        } else {
+            abAppend(ab, " ", 1);
+            len++;
         }
     }
+    abAppend(ab, "\x1b[m", 3); // go back to default formatting
 }
 
 void editorRefreshScreen() {
@@ -394,6 +417,7 @@ void editorRefreshScreen() {
     abAppend(&ab, "\x1b[H", 3); // position cursor
 
     editorDrawRows(&ab);
+    editorDrawStatusBar(&ab);
 
     char buf[32];
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowOff) + 1, (E.rx - E.colOff) + 1);
@@ -480,7 +504,7 @@ void editorProcessKeypress() {
                     E.cy = E.rowOff;
                 } else if(c == PAGE_DOWN) {
                     E.cy = E.rowOff + E.screenRows - 1;
-                    if(E.cy > E.numRow) E.cy = E.numRows;
+                    if(E.cy > E.numRows) E.cy = E.numRows;
                 }
 
                 int times = E.screenRows;
@@ -509,8 +533,10 @@ void initEditor() {
     E.colOff = 0;
     E.numRows = 0;
     E.row = NULL;
+    E.filename = NULL;
 
     if (getWindowSize(&E.screenRows, &E.screenCols) == -1) die("getWindowSize");
+    E.screenRows -= 1;
 }
 
 int main(int argc, char* argv[]) {
