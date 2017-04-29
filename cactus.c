@@ -269,7 +269,7 @@ void editorAppendRow(char *s, size_t len) {
 
 void editorRowInsertChar(erow *row, int at, int c) {
     // validate the index we want to insert the character into
-    if(at < 0 || at row->size) at = row->size;
+    if(at < 0 || at > row->size) at = row->size;
     // allocate one more byte for the chars of the erow
     // add 2 because we need to also make room for the null byte
     row->chars = realloc(row->chars, row->size + 2);
