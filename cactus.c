@@ -9,6 +9,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -303,6 +304,31 @@ void editorInsertChar(int c) {
 
 /*** file i/o ***/
 
+// convert array of erow structs into a string strings that writes out to a file
+char *editorRowsToString(int *buffLen) {
+    int totLen = 0;
+    int j;
+    for(j = 0; j < E.numRows; j++) {
+        // add up the lengths of each row of text
+        // add 1 to each one for the newline char we add to the end of each line
+        totLen += E.row[j].size + 1;
+    }
+    // save the total length into buffLen
+    *buffLen = totLen;
+
+    char *buf = malloc(totLen);
+    char *p = buf;
+    // loop through the rows
+    for(j = 0; j < E.numRows; j++) {
+        memcpy(p, E.row[j].chars, E.row[j].size);
+        p += E.row[j].size;
+        *p = '\n'; // append newline character after each row
+        p++;
+    }
+
+    return buf;
+}
+
 // open and read file from disk
 void editorOpen(char *filename) {
     free(E.filename);
@@ -324,6 +350,24 @@ void editorOpen(char *filename) {
     }
     free(line);
     fclose(fp);
+}
+
+// write the string returned by editorRowsToString() to disk
+void editorSave() {
+    // if a new file, filename is null
+    if(E.filename == NULL) return;
+
+    int len;
+    char *buf = editorRowsToString(&len);
+
+    // create a new file if it doesn't already exist and open it for reading and writing
+    // 0644 is the standard permission for text files
+    int fd = open(E.filename, O_RDWR | O_CREAT, 0644);
+
+    ftruncate(fd, len); // set the file size to the specified length
+    write(fd, buf, len);
+    close(fd);
+    free(buf);
 }
 
 /***
@@ -551,6 +595,10 @@ void editorProcessKeypress() {
             write(STDOUT_FILENO, "\x1b[2J", 4);
             write(STDOUT_FILENO, "\x1b[H", 3);
             exit(0);
+            break;
+
+        case CTRL_KEY('s'):
+            editorSave();
             break;
 
         case HOME_KEY:
