@@ -69,6 +69,10 @@ struct editorConfig {
 
 struct editorConfig E;
 
+/*** prototypes ***/
+
+void editorSetStatusMessage(const char *fmt, ...);
+
 // implicit declaration of function 'ioctl' is invalid in C99
 int ioctl(int fd, unsigned long request, ...);
 
