@@ -369,6 +369,7 @@ void editorSave() {
             if(write(fd, buf, len) == len) {
                 close(fd);
                 free(buf);
+                editorSetStatusMessage("%d bytes written to disk.", len);
                 return;
             }
         }
@@ -376,6 +377,7 @@ void editorSave() {
     }
 
     free(buf);
+    editorSetStatusMessage("Can't save! I/o error: %s", strerror(errno));
 }
 
 /***
@@ -687,7 +689,7 @@ int main(int argc, char* argv[]) {
     }
 
     // set initial status message
-    editorSetStatusMessage("HELP: Ctrl-Q = quit");
+    editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-Q = quit");
 
     while (1) {
         editorRefreshScreen();
