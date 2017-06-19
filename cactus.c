@@ -1,3 +1,6 @@
+// to run cactus, 'make all', then './cactus'
+
+/*** includes ***/
 #define _DEFAULT_SOURCE
 #define _BSD_SOURCE
 #define _GNU_SOURCE
