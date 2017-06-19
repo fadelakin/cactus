@@ -20,6 +20,7 @@
 
 #define CACTUS_VERSION "0.0.1"
 #define CACTUS_TAB_STOP 8
+#define CACTUS_QUIT_TIMES 3
 
 #define CTRL_KEY(k) ((k) & 0x1f)
 
@@ -598,6 +599,8 @@ void editorMoveCursor(int key) {
 
 // wait for keypress and handle it
 void editorProcessKeypress() {
+    static int quitTimes = CACTUS_QUIT_TIMES;
+
     int c = editorReadKey();
 
     switch(c) {
@@ -607,6 +610,11 @@ void editorProcessKeypress() {
             break;
 
         case CTRL_KEY('q'):
+            if (E.dirty && quitTimes > 0) {
+                editorSetStatusMessage("WARNING!!! File has unsaved changes. Press Ctrl-Q %d more times to quit.", quitTimes);
+                quitTimes--;
+                return;
+            }
             write(STDOUT_FILENO, "\x1b[2J", 4);
             write(STDOUT_FILENO, "\x1b[H", 3);
             exit(0);
@@ -665,6 +673,8 @@ void editorProcessKeypress() {
             editorInsertChar(c);
             break;
     }
+
+    quitTimes = CACTUS_QUIT_TIMES;
 }
 
 /*** init ***/
