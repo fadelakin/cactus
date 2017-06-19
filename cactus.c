@@ -1,4 +1,3 @@
-// to compile, run 'cc cactus.c -o cactus'
 // to run cactus, './cactus'
 
 /*** includes ***/
@@ -61,6 +60,7 @@ struct editorConfig {
     int screenCols;
     int numRows;
     erow *row; // an array of erow structs to store multiple lines
+    int dirty; // marker for bugger if it has been modified since opening or saving the file.
     char *filename; // filename for status bar
     char statusmsg[80];
     time_t statusmsg_time;
@@ -271,6 +271,7 @@ void editorAppendRow(char *s, size_t len) {
     editorUpdateRow(&E.row[at]);
 
     E.numRows++;
+    E.dirty++;
 }
 
 void editorRowInsertChar(erow *row, int at, int c) {
@@ -287,6 +288,7 @@ void editorRowInsertChar(erow *row, int at, int c) {
     row->chars[at] = c;
     // update render and rsize with the new row content
     editorUpdateRow(row);
+    E.dirty++;
 }
 
 /*** editor operations ***/
@@ -354,6 +356,7 @@ void editorOpen(char *filename) {
     }
     free(line);
     fclose(fp);
+    E.dirty = 0;
 }
 
 // write the string returned by editorRowsToString() to disk
@@ -373,6 +376,7 @@ void editorSave() {
             if(write(fd, buf, len) == len) {
                 close(fd);
                 free(buf);
+                E.dirty = 0;
                 editorSetStatusMessage("%d bytes written to disk.", len);
                 return;
             }
@@ -487,7 +491,8 @@ void editorDrawStatusBar(struct abuf *ab) {
     abAppend(ab, "\x1b[1;4;7m", 4); // bold, underscore, and invert colors in status bar
     char status[80], rstatus[80];
     int len = snprintf(status, sizeof(status), "%.20s - %d lines",
-        E.filename ? E.filename : "[No Name]", E.numRows);
+        E.filename ? E.filename : "[No Name]", E.numRows,
+        E.dirty ? "(modified)" : "");
     int rLen = snprintf(rstatus, sizeof(rstatus), "%d/%d", E.cy + 1, E.numRows);
     if(len > E.screenCols) len = E.screenCols;
     abAppend(ab, status, len);
@@ -677,6 +682,7 @@ void initEditor() {
     E.colOff = 0;
     E.numRows = 0;
     E.row = NULL;
+    E.dirty = 0; // initialize dirty state
     E.filename = NULL;
     E.statusmsg[0] = '\0';
     E.statusmsg_time = 0;
