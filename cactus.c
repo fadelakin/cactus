@@ -291,6 +291,16 @@ void editorRowInsertChar(erow *row, int at, int c) {
     E.dirty++;
 }
 
+// deletes a character in an erow
+void editorRowDelChar(erow *row, int at) {
+    if (at < 0 || at >= row->size) return;
+    // overwrite the deleted character with the characters that come after it2
+    memmove(&row->chars[at], &row->chars[at + 1], row->size - at);
+    row->size--;
+    editorUpdateRow(row);
+    E.dirty++;
+}
+
 /*** editor operations ***/
 
 // take a character and use editorRowInsertChar() to insert that character
@@ -306,6 +316,19 @@ void editorInsertChar(int c) {
     // will go after the character just inserted
     editorRowInsertChar(&E.row[E.cy], E.cx, c);
     E.cx++;
+}
+
+// delete the character that is to the left of the cursor
+void editorDelChar() {
+    // if cursor is past the end of the file, nothing to delete
+    if(E.cy == E.numRows) return;
+
+    erow *row = &E.row[E.cy];
+    // if there is a character to the left of the cursor, delete and move cursor one to the left
+    if(E.cx > 0) {
+        editorRowDelChar(row, E.cx - 1);
+        E.cx--;
+    }
 }
 
 /*** file i/o ***/
@@ -641,7 +664,8 @@ void editorProcessKeypress() {
         case BACKSPACE:
         case CTRL_KEY('h'):
         case DEL_KEY:
-            /* TODO */
+            if (c == DEL_KEY) editorMoveCursor(ARROW_RIGHT);
+            editorDelChar();
             break;
 
         case PAGE_UP:
