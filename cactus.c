@@ -78,6 +78,8 @@ int ioctl(int fd, unsigned long request, ...);
 
 void editorRefreshScreen();
 
+char *editorPrompt(char *prompt);
+
 
 /*** terminal ***/
 
@@ -437,7 +439,9 @@ void editorOpen(char *filename) {
 // write the string returned by editorRowsToString() to disk
 void editorSave() {
     // if a new file, filename is null
-    if(E.filename == NULL) return;
+    if(E.filename == NULL) {
+        E.filename = editorPrompt("Save as: %s");
+    }
 
     int len;
     char *buf = editorRowsToString(&len);
