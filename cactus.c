@@ -76,6 +76,7 @@ void editorSetStatusMessage(const char *fmt, ...);
 // implicit declaration of function 'ioctl' is invalid in C99
 int ioctl(int fd, unsigned long request, ...);
 
+
 /*** terminal ***/
 
 // error handling
@@ -256,11 +257,13 @@ void editorUpdateRow(erow *row) {
     row->rsize = index;
 }
 
-void editorAppendRow(char *s, size_t len) {
+void editorInsertRow(int at, char *s, size_t len) {
+    if (at < 0 || at > E.numRows) return;
+
     // allocate space for a new erow and then copy the given string to a new erow at the end of E.row array
     E.row = realloc(E.row, sizeof(erow) * (E.numRows + 1));
+    memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.numRows - at));
 
-    int at = E.numRows;
     E.row[at].size = len;
     E.row[at].chars = malloc(len + 1);
     memcpy(E.row[at].chars, s, len);
@@ -334,13 +337,29 @@ void editorInsertChar(int c) {
     if(E.cy == E.numRows) {
         // cursor is on the tilde line after the end of the file
         // so append a new row to the file before inserting character
-        editorAppendRow("", 0);
+        editorInsertRow(E.numRows, "", 0);
     }
 
     // move cursor forward so next character the user inserts
     // will go after the character just inserted
     editorRowInsertChar(&E.row[E.cy], E.cx, c);
     E.cx++;
+}
+
+// handle 'enter' keypress
+void editorInsertNewLine() {
+    if(E.cx == 0) {
+        editorInsertRow(E.cy, "", 0);
+    } else {
+        erow *row = &E.row[E.cy];
+        editorInsertRow(E.cy + 1, &row->chars[E.cx], row->size - E.cx);
+        row = &E.row[E.cy];
+        row->size = E.cx;
+        row->chars[row->size] = '\0';
+        editorUpdateRow(row);
+    }
+    E.cy++;
+    E.cx = 0;
 }
 
 // delete the character that is to the left of the cursor
@@ -406,7 +425,7 @@ void editorOpen(char *filename) {
     while((linelen = getline(&line, &linecap, fp)) != -1) {
         while(linelen > 0 && (line[linelen -1] == '\n' || line[linelen - 1] == '\r'))
             linelen--;
-        editorAppendRow(line, linelen);
+        editorInsertRow(E.numRows, line, linelen);
     }
     free(line);
     fclose(fp);
@@ -663,7 +682,7 @@ void editorProcessKeypress() {
     switch(c) {
         // ignore enter key
         case '\r':
-            /* TODO */
+            editorInsertNewLine();
             break;
 
         case CTRL_KEY('q'):
