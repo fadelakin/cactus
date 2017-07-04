@@ -76,6 +76,8 @@ void editorSetStatusMessage(const char *fmt, ...);
 // implicit declaration of function 'ioctl' is invalid in C99
 int ioctl(int fd, unsigned long request, ...);
 
+void editorRefreshScreen();
+
 
 /*** terminal ***/
 
@@ -627,6 +629,37 @@ void editorSetStatusMessage(const char *fmt, ...) {
 }
 
 /*** input ***/
+
+// display a prompt in the status bar & let the user input a line of text
+// after the prompt
+char *editorPrompt(char *prompt) {
+    size_t bufSize = 128;
+    char *buf = malloc(bufSize); // store user input
+
+    size_t bufLen = 0;
+    buf[0] = '\0';
+
+    // repeatedly set the status message, refresh the screen and wait for a keypress to handle
+    while (1) {
+        editorSetStatusMessage(prompt, buf);
+        editorRefreshScreen();
+
+        int c = editorReadKey();
+        if (c == '\r') {
+            if (bufLen != 0) {
+                editorSetStatusMessage("");
+                return buf;
+            }
+        } else if (!iscntrl(c) && c < 128) {
+            if (bufLen == bufSize - 1) {
+                bufSize *= 2;
+                buf = realloc(buf, bufSize);
+            }
+            buf[bufLen++] = c;
+            buf[bufLen] = '\0';
+        }
+    }
+}
 
 // move cursor with w,a,s,d keys
 // w - up, a - left, s - down, d - right
