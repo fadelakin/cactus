@@ -439,9 +439,9 @@ void editorOpen(char *filename) {
 // write the string returned by editorRowsToString() to disk
 void editorSave() {
     // if a new file, filename is null
-    if(E.filename == NULL) {
+    if (E.filename == NULL) {
         E.filename = editorPrompt("Save as: %s (ESC to cancel)");
-        if (E.filename = NULL) {
+        if (E.filename == NULL) {
             editorSetStatusMessage("Save aborted");
             return;
         }
@@ -468,7 +468,7 @@ void editorSave() {
     }
 
     free(buf);
-    editorSetStatusMessage("Can't save! I/o error: %s", strerror(errno));
+    editorSetStatusMessage("Can't save! I/O error: %s", strerror(errno));
 }
 
 /***
