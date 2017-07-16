@@ -235,6 +235,21 @@ int editorRowCxToRx(erow *row, int cx) {
     return rx;
 }
 
+// convert render index to chars index before assigning it
+int editorRowRxToCx(erow *row, int rx) {
+    int cur_rx = 0;
+    int cx;
+    for(cx = 0; cx < row->size; cx++) {
+        if(row->chars[cx] == '\t') {
+            cur_rx += (CACTUS_TAB_STOP - 1) - (cur_rx % CACTUS_TAB_STOP);
+        }
+        cur_rx++;
+
+        if(cur_rx > rx) return cx;
+    }
+    return cx; // just in case caller provided a rx that is out of range
+}
+
 // use the chars string of an erow to fill the contents of the render string
 void editorUpdateRow(erow *row) {
     int tabs = 0;
@@ -469,6 +484,29 @@ void editorSave() {
 
     free(buf);
     editorSetStatusMessage("Can't save! I/O error: %s", strerror(errno));
+}
+
+/*** find ***/
+
+void editorFind() {
+    char *query = editorPrompt("Search: %s (ESC to cancel)");
+    if (query == NULL) return;
+
+    // loop through all the rows of the file
+    int i;
+    for(i = 0; i < E.numRows; i++) {
+        erow *row = &E.row[i];
+        // check if query is a substring of the current row
+        char *match = strstr(row->render, query);
+        if(match) {
+            E.cy = i;
+            E.cx = editorRowRxToCx(row, match - row->render);
+            E.rowOff = E.numRows;
+            break;
+        }
+    }
+
+    free(query);
 }
 
 /***
@@ -757,6 +795,10 @@ void editorProcessKeypress() {
             }
             break;
 
+        case CTRL_KEY('f'):
+            editorFind();
+            break;
+
         // handle backspace or delete key
         case BACKSPACE:
         case CTRL_KEY('h'):
@@ -829,7 +871,7 @@ int main(int argc, char* argv[]) {
     }
 
     // set initial status message
-    editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-Q = quit");
+    editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-Q = quit | Ctrl-F = find");
 
     while (1) {
         editorRefreshScreen();
