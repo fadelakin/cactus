@@ -78,7 +78,7 @@ int ioctl(int fd, unsigned long request, ...);
 
 void editorRefreshScreen();
 
-char *editorPrompt(char *prompt);
+char *editorPrompt(char *prompt, void (*callback)(char *, int));
 
 
 /*** terminal ***/
@@ -455,7 +455,7 @@ void editorOpen(char *filename) {
 void editorSave() {
     // if a new file, filename is null
     if (E.filename == NULL) {
-        E.filename = editorPrompt("Save as: %s (ESC to cancel)");
+        E.filename = editorPrompt("Save as: %s (ESC to cancel)", NULL);
         if (E.filename == NULL) {
             editorSetStatusMessage("Save aborted");
             return;
@@ -488,9 +488,11 @@ void editorSave() {
 
 /*** find ***/
 
-void editorFind() {
-    char *query = editorPrompt("Search: %s (ESC to cancel)");
-    if (query == NULL) return;
+void editorFindCallback(char *query, int key) {
+    // check if user pressed 'enter' or 'escape', if so, leave search mode
+    if (key == '\r' || key == '\x1b') {
+        return;
+    }
 
     // loop through all the rows of the file
     int i;
@@ -505,8 +507,14 @@ void editorFind() {
             break;
         }
     }
+}
 
-    free(query);
+void editorFind() {
+    char *query = editorPrompt("Search: %s (ESC to cancel)", editorFindCallback);
+
+    if(query) {
+        free(query);
+    }
 }
 
 /***
@@ -676,9 +684,8 @@ void editorSetStatusMessage(const char *fmt, ...) {
 
 /*** input ***/
 
-// display a prompt in the status bar & let the user input a line of text
-// after the prompt
-char *editorPrompt(char *prompt) {
+// display a prompt in the status bar & let the user input a line of text after the prompt
+char *editorPrompt(char *prompt, void (*callback)(char *, int)) {
     size_t bufSize = 128;
     char *buf = malloc(bufSize); // store user input
 
@@ -695,11 +702,13 @@ char *editorPrompt(char *prompt) {
             if (bufLen != 0) buf[--bufLen] = '\0';
         } else if (c  == '\x1b') {
             editorSetStatusMessage("");
+            if (callback) callback(buf, c);
             free(buf);
             return NULL;
         } else if (c == '\r') {
             if (bufLen != 0) {
                 editorSetStatusMessage("");
+                if (callback) callback(buf, c);
                 return buf;
             }
         } else if (!iscntrl(c) && c < 128) {
@@ -710,6 +719,8 @@ char *editorPrompt(char *prompt) {
             buf[bufLen++] = c;
             buf[bufLen] = '\0';
         }
+
+        if(callback) callback(buf, c);
     }
 }
 
