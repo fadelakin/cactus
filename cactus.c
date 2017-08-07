@@ -489,19 +489,39 @@ void editorSave() {
 /*** find ***/
 
 void editorFindCallback(char *query, int key) {
+    static int lastMatch = -1; // index of the row the last match was on
+    static int direction = 1; // direction of search; 1 - forward; -1 - backward
+
     // check if user pressed 'enter' or 'escape', if so, leave search mode
     if (key == '\r' || key == '\x1b') {
+        lastMatch = -1;
+        direction = 1;
         return;
+    } else if (key == ARROW_RIGHT || key == ARROW_DOWN) {
+        direction = 1;
+    } else if (key == ARROW_LEFT || key == ARROW_UP) {
+        direction = -1;
+    } else {
+        lastMatch = -1;
+        direction = 1;
     }
+
+    if (lastMatch == -1) direction = 1;
+    int current = lastMatch; // index of the current row wer are searching
 
     // loop through all the rows of the file
     int i;
     for(i = 0; i < E.numRows; i++) {
-        erow *row = &E.row[i];
+        current += direction;
+        if (current == -1) current = E.numRows - 1;
+        else if (current == E.numRows) current = 0;
+
+        erow *row = &E.row[current];
         // check if query is a substring of the current row
         char *match = strstr(row->render, query);
         if(match) {
-            E.cy = i;
+            lastMatch = current;
+            E.cy = current;
             E.cx = editorRowRxToCx(row, match - row->render);
             E.rowOff = E.numRows;
             break;
@@ -515,7 +535,7 @@ void editorFind() {
     int saved_coloff = E.colOff;
     int saved_rowoff = E.rowOff;
 
-    char *query = editorPrompt("Search: %s (ESC to cancel)", editorFindCallback);
+    char *query = editorPrompt("Search: %s (Use ESC/Arrows/Enter)", editorFindCallback);
 
     if(query) {
         free(query);
