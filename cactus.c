@@ -637,7 +637,20 @@ void editorDrawRows(struct abuf *ab) {
             int len = E.row[fileRow].rsize - E.colOff;
             if(len < 0) len = 0;
             if(len > E.screenCols) len = E.screenCols;
-            abAppend(ab, &E.row[fileRow].render[E.colOff], len);
+
+            // attempt to highlight numbers by coloring each digit char red
+            char *c  = &E.row[fileRow].render[E.colOff];
+            int j;
+            for (j = 0; j < len; j++) {
+                // if character is a digit, set color
+                if (isdigit(c[j])) {
+                    abAppend(ab, "\x1b[31m", 5);
+                    abAppend(ab, &c[j], 1);
+                    abAppend(ab, "\x1b[39m", 5);
+                } else {
+                    abAppend(ab, &c[j], 1);
+                }
+            }
         }
 
         abAppend(ab, "\x1b[K", 3);
