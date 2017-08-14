@@ -43,7 +43,8 @@ enum editorKey {
 // enum containing possible values that hl can contain
 enum editorHighlight {
     HL_NORMAL = 0,
-    HL_NUMBER
+    HL_NUMBER,
+    HL_MATCH
 };
 
 /*** data ***/
@@ -242,6 +243,7 @@ void editorUpdateSyntax(erow *row) {
 int editorSyntaxToColor(int hl) {
     switch (hl) {
         case HL_NUMBER: return 31; // return red for numbers
+        case HL_MATCH: return 34; // return blue for search result
         default: return 37; // return white for anything else
     }
 }
@@ -527,6 +529,16 @@ void editorFindCallback(char *query, int key) {
     static int lastMatch = -1; // index of the row the last match was on
     static int direction = 1; // direction of search; 1 - forward; -1 - backward
 
+    // restore text color after search
+    static int saved_hl_line;
+    static char *saved_hl = NULL;
+
+    if (saved_hl) {
+        memcpy(E.row[saved_hl_line].hl, saved_hl, E.row[saved_hl_line].rsize);
+        free(saved_hl);
+        saved_hl = NULL;
+    }
+
     // check if user pressed 'enter' or 'escape', if so, leave search mode
     if (key == '\r' || key == '\x1b') {
         lastMatch = -1;
@@ -559,6 +571,11 @@ void editorFindCallback(char *query, int key) {
             E.cy = current;
             E.cx = editorRowRxToCx(row, match - row->render);
             E.rowOff = E.numRows;
+
+            saved_hl_line = current;
+            saved_hl = malloc(row->rsize);
+            memcpy(saved_hl, row->hl, row->rsize);
+            memset(&row->hl[match - row->render], HL_MATCH, strlen(query));
             break;
         }
     }
