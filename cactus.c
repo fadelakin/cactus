@@ -40,6 +40,12 @@ enum editorKey {
     PAGE_DOWN
 };
 
+// enum containing possible values that hl can contain
+enum editorHighlight {
+    HL_NORMAL = 0,
+    HL_NUMBER
+};
+
 /*** data ***/
 
 // editor row
@@ -48,6 +54,7 @@ typedef struct erow {
     int rsize; // render size
     char *chars;
     char *render;
+    unsigned char *hl; // array for highlighting each line in an array
 } erow;
 
 // contain editor state
@@ -215,6 +222,30 @@ int getWindowSize(int *rows, int *cols) {
     }
 }
 
+/*** syntax highlighting ***/
+
+void editorUpdateSyntax(erow *row) {
+    row->hl = realloc(row->hl, row->rsize);
+
+    // set all characters to HL_NORMAL by default
+    memset(row->hl, HL_NORMAL, row->rsize);
+
+    int i;
+    for (i = 0; i < row->rsize; i++) {
+        if (isdigit(row->render[i])) {
+            row->hl[i] = HL_NUMBER;
+        }
+    }
+}
+
+// map values in hl to actual ANSI color codes we want to draw them with
+int editorSyntaxToColor(int hl) {
+    switch (hl) {
+        case HL_NUMBER: return 31; // return red for numbers
+        default: return 37; // return white for anything else
+    }
+}
+
 /*** row operations ***/
 
 // convert a chars index into a render index
@@ -274,6 +305,8 @@ void editorUpdateRow(erow *row) {
     }
     row->render[index] = '\0';
     row->rsize = index;
+
+    editorUpdateSyntax(row);
 }
 
 void editorInsertRow(int at, char *s, size_t len) {
@@ -290,6 +323,7 @@ void editorInsertRow(int at, char *s, size_t len) {
 
     E.row[at].rsize = 0;
     E.row[at].render = NULL;
+    E.row[at].hl = NULL;
     editorUpdateRow(&E.row[at]);
 
     E.numRows++;
@@ -300,6 +334,7 @@ void editorInsertRow(int at, char *s, size_t len) {
 void editorFreeRow(erow *row) {
     free(row->render);
     free(row->chars);
+    free(row->hl);
 }
 
 void editorDelRow(int at) {
@@ -640,17 +675,28 @@ void editorDrawRows(struct abuf *ab) {
 
             // attempt to highlight numbers by coloring each digit char red
             char *c  = &E.row[fileRow].render[E.colOff];
+            unsigned char *hl = &E.row[fileRow].hl[E.colOff];
+            int current_color = -1; // default text color
             int j;
             for (j = 0; j < len; j++) {
-                // if character is a digit, set color
-                if (isdigit(c[j])) {
-                    abAppend(ab, "\x1b[31m", 5);
+                if (hl[j] == HL_NORMAL) {
+                    if (current_color != -1) {
+                        abAppend(ab, "\x1b[39m", 5); // default text color
+                        current_color = -1;
+                    }
                     abAppend(ab, &c[j], 1);
-                    abAppend(ab, "\x1b[39m", 5);
                 } else {
+                    int color = editorSyntaxToColor(hl[j]);
+                    if (color != current_color) {
+                        current_color = color;
+                        char buf[16];
+                        int cLen = snprintf(buf, sizeof(buf), "\x1b[%dm", color);
+                        abAppend(ab, buf, cLen);
+                    }
                     abAppend(ab, &c[j], 1);
                 }
             }
+            abAppend(ab, "\x1b[39m", 5);
         }
 
         abAppend(ab, "\x1b[K", 3);
