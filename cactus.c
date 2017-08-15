@@ -44,6 +44,7 @@ enum editorKey {
 enum editorHighlight {
     HL_NORMAL = 0,
     HL_COMMENT,
+    HL_MULTI_LINE_COMMENT,
     HL_KEYWORDS,
     HL_COMMON_TYPES,
     HL_STRING,
@@ -61,16 +62,20 @@ struct editorSyntax {
     char **filematch;
     char **keywords;
     char *singleline_comment_start;
+    char *multiline_comment_start;
+    char *multiline_comment_end;
     int flags;
 };
 
 // editor row
 typedef struct erow {
+    int idx;
     int size;
     int rsize; // render size
     char *chars;
     char *render;
     unsigned char *hl; // array for highlighting each line in an array
+    int hl_open_comment;
 } erow;
 
 // contain editor state
@@ -110,7 +115,7 @@ struct editorSyntax HLDB[] = {
         "c",
         C_HL_extensions,
         C_HL_keywords,
-        "//",
+        "//", "/*", "*/",
         HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS
     },
 };
@@ -280,20 +285,48 @@ void editorUpdateSyntax(erow *row) {
     char **keywords = E.syntax->keywords;
 
     char *scs = E.syntax->singleline_comment_start;
+    char *mcs = E.syntax->multiline_comment_start;
+    char *mce = E.syntax->multiline_comment_end;
+
     int scs_len = scs ? strlen(scs) : 0;
+    int mcs_len = mcs ? strlen(mcs) : 0;
+    int mce_len = mce ? strlen(mce) : 0;
 
     int prevSep = 1; // keep track if the previous character is a seperator
     int in_string = 0; // keep track of whether we are currently inside a string
+    // keep track of whether we are currently inside a multilen comment
+    int in_comment = (row->idx > 0 && E.row[row->idx - 1].hl_open_comment);
 
     int i = 0;
     while (i < row->rsize) {
         char c = row->render[i];
         unsigned char prev_hl = (i > 0) ? row->hl[i - 1] : HL_NORMAL;
 
-        if(scs_len && !in_string) {
+        if(scs_len && !in_string && !in_comment) {
             if(!strncmp(&row->render[i], scs, scs_len)) {
                 memset(&row->hl[i], HL_COMMENT, row->rsize - i);
                 break;
+            }
+        }
+
+        if(mcs_len && mce_len && !in_string) {
+            if(in_comment) {
+                row->hl[i] = HL_MULTI_LINE_COMMENT;
+                if(!strncmp(&row->render[i], mce, mce_len)) {
+                    memset(&row->hl[i], HL_MULTI_LINE_COMMENT, mce_len);
+                    i += mce_len;
+                    in_comment = 0;
+                    prevSep = 1;
+                    continue;
+                } else {
+                    i++;
+                    continue;
+                }
+            } else if(!strncmp(&row->render[i], mcs, mcs_len)) {
+                memset(&row->hl[i], HL_MULTI_LINE_COMMENT, mcs_len);
+                i += mcs_len;
+                in_comment = 1;
+                continue;
             }
         }
 
@@ -352,12 +385,19 @@ void editorUpdateSyntax(erow *row) {
         prevSep = is_seperator(c);
         i++;
     }
+
+    int changed = (row->hl_open_comment != in_comment);
+    row->hl_open_comment = in_comment;
+    if(changed && row->idx + 1 < E.numRows) {
+        editorUpdateSyntax(&E.row[row->idx + 1]);
+    }
 }
 
 // map values in hl to actual ANSI color codes we want to draw them with
 int editorSyntaxToColor(int hl) {
     switch (hl) {
-        case HL_COMMENT: return 36; // return cyan for comments
+        case HL_COMMENT:
+        case HL_MULTI_LINE_COMMENT: return 36; // return cyan for comments
         case HL_KEYWORDS: return 33; // return yellow for keywords
         case HL_COMMON_TYPES: return 32; // return green for common types
         case HL_STRING: return 35; // return magenta for strings
@@ -464,6 +504,9 @@ void editorInsertRow(int at, char *s, size_t len) {
     // allocate space for a new erow and then copy the given string to a new erow at the end of E.row array
     E.row = realloc(E.row, sizeof(erow) * (E.numRows + 1));
     memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.numRows - at));
+    for(int j = at + 1; j <= E.numRows; j++) E.row[j].idx++;
+
+    E.row[at].idx = at; // row's index in the file at the time it is inserted
 
     E.row[at].size = len;
     E.row[at].chars = malloc(len + 1);
@@ -473,6 +516,7 @@ void editorInsertRow(int at, char *s, size_t len) {
     E.row[at].rsize = 0;
     E.row[at].render = NULL;
     E.row[at].hl = NULL;
+    E.row[at].hl_open_comment = 0;
     editorUpdateRow(&E.row[at]);
 
     E.numRows++;
@@ -491,6 +535,7 @@ void editorDelRow(int at) {
     editorFreeRow(&E.row[at]);
     // overwrite the deleted row struct with the rest of the rows that come after it
     memmove(&E.row[at], &E.row[at + 1], sizeof(erow) * (E.numRows - at - 1));
+    for(int j = at; j < E.numRows - 1; j++) E.row[j].idx--;
     E.numRows--;
     E.dirty++;
 }
