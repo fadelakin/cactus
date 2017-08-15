@@ -43,11 +43,13 @@ enum editorKey {
 // enum containing possible values that hl can contain
 enum editorHighlight {
     HL_NORMAL = 0,
+    HL_STRING,
     HL_NUMBER,
     HL_MATCH
 };
 
 #define HL_HIGHLIGHT_NUMBERS (1<<0)
+#define HL_HIGHLIGHT_STRINGS (1<<1)
 
 /*** data ***/
 
@@ -95,7 +97,7 @@ struct editorSyntax HLDB[] = {
     {
         "c",
         C_HL_extensions,
-        HL_HIGHLIGHT_NUMBERS
+        HL_HIGHLIGHT_NUMBERS | HL_HIGHLIGHT_STRINGS
     },
 };
 
@@ -262,11 +264,34 @@ void editorUpdateSyntax(erow *row) {
     if (E.syntax == NULL) return;
 
     int prevSep = 1; // keep track if the previous character is a seperator
+    int in_string = 0; // keep track of whether we are currently inside a string
 
     int i = 0;
     while (i < row->rsize) {
         char c = row->render[i];
         unsigned char prev_hl = (i > 0) ? row->hl[i - 1] : HL_NORMAL;
+
+        if(E.syntax->flags & HL_HIGHLIGHT_STRINGS) {
+            if(in_string) {
+                row->hl[i] = HL_STRING;
+                if(c == '\\' && i + 1 < row->rsize) {
+                    row->hl[i + 1] = HL_STRING;
+                    i += 2;
+                    continue;
+                }
+                if(c == in_string) in_string = 0;
+                i++;
+                prevSep = 1;
+                continue;
+            } else {
+                if(c == '"' || c == '\'') {
+                    in_string = c;
+                    row->hl[i] = HL_STRING;
+                    i++;
+                    continue;
+                }
+            }
+        }
 
         if (E.syntax->flags & HL_HIGHLIGHT_NUMBERS) {
             if ((isdigit(c) && (prevSep || prev_hl == HL_NUMBER)) ||
@@ -286,6 +311,7 @@ void editorUpdateSyntax(erow *row) {
 // map values in hl to actual ANSI color codes we want to draw them with
 int editorSyntaxToColor(int hl) {
     switch (hl) {
+        case HL_STRING: return 35; // return magenta for strings
         case HL_NUMBER: return 31; // return red for numbers
         case HL_MATCH: return 34; // return blue for search result
         default: return 37; // return white for anything else
