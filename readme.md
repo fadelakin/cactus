@@ -4,13 +4,13 @@ Cactus is a super lightweight text editor I made in C. It supports syntax highli
 
 ## FAQ
 
-*Should I use this*
+**Should I use this**
 
 No. It actually doesn't work all that well. You can write in it, but as far as I know, there is no indentation.
 
 Saving files does not actually work either. Also there are so many bugs.
 
-*What if I just want to run it and see*
+**What if I just want to run it and see**
 
 Okay cool. So if you have C compiler, just make all with the makefile and then use `./cactus` to run the editor.
 
