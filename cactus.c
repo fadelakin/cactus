@@ -1092,77 +1092,77 @@ void editorProcessKeypress() {
     switch(c) {
         // ignore enter key
         case '\r':
-        editorInsertNewLine();
-        break;
+            editorInsertNewLine();
+            break;
 
         case CTRL_KEY('q'):
-        if (E.dirty && quitTimes > 0) {
-            editorSetStatusMessage("WARNING!!! File has unsaved changes. Press Ctrl-Q %d more times to quit.", quitTimes);
-            quitTimes--;
-            return;
-        }
-        write(STDOUT_FILENO, "\x1b[2J", 4);
-        write(STDOUT_FILENO, "\x1b[H", 3);
-        exit(0);
-        break;
+            if (E.dirty && quitTimes > 0) {
+                editorSetStatusMessage("WARNING!!! File has unsaved changes. Press Ctrl-Q %d more times to quit.", quitTimes);
+                quitTimes--;
+                return;
+            }
+            write(STDOUT_FILENO, "\x1b[2J", 4);
+            write(STDOUT_FILENO, "\x1b[H", 3);
+            exit(0);
+            break;
 
         case CTRL_KEY('s'):
-        editorSave();
-        break;
+            editorSave();
+            break;
 
         case HOME_KEY:
-        E.cx = 0;
-        break;
+            E.cx = 0;
+            break;
 
         case END_KEY:
-        if(E.cy < E.numRows) {
-            E.cx = E.row[E.cy].size;
-        }
-        break;
+            if(E.cy < E.numRows) {
+                E.cx = E.row[E.cy].size;
+            }
+            break;
 
         case CTRL_KEY('f'):
-        editorFind();
-        break;
+            editorFind();
+            break;
 
         // handle backspace or delete key
         case BACKSPACE:
         case CTRL_KEY('h'):
         case DEL_KEY:
-        if (c == DEL_KEY) editorMoveCursor(ARROW_RIGHT);
-        editorDelChar();
-        break;
+            if (c == DEL_KEY) editorMoveCursor(ARROW_RIGHT);
+            editorDelChar();
+            break;
 
         case PAGE_UP:
         case PAGE_DOWN:
-        {
-            if(c == PAGE_UP) {
-                E.cy = E.rowOff;
-            } else if(c == PAGE_DOWN) {
-                E.cy = E.rowOff + E.screenRows - 1;
-                if(E.cy > E.numRows) E.cy = E.numRows;
-            }
+            {
+                if(c == PAGE_UP) {
+                    E.cy = E.rowOff;
+                } else if(c == PAGE_DOWN) {
+                    E.cy = E.rowOff + E.screenRows - 1;
+                    if(E.cy > E.numRows) E.cy = E.numRows;
+                }
 
-            int times = E.screenRows;
-            while(times--)
-            editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
-        }
-        break;
+                int times = E.screenRows;
+                while(times--)
+                editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
+            }
+            break;
 
         case ARROW_UP:
         case ARROW_DOWN:
         case ARROW_LEFT:
         case ARROW_RIGHT:
-        editorMoveCursor(c);
-        break;
+            editorMoveCursor(c);
+            break;
 
         // do nothing with the ctrl-l and escape keys
         case CTRL_KEY('l'):
         case '\x1b':
-        break;
+            break;
 
         default:
-        editorInsertChar(c);
-        break;
+            editorInsertChar(c);
+            break;
     }
 
     quitTimes = CACTUS_QUIT_TIMES;
