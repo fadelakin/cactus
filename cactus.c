@@ -846,7 +846,18 @@ void editorDrawRows(struct abuf *ab) {
             int current_color = -1; // default text color
             int j;
             for (j = 0; j < len; j++) {
-                if (hl[j] == HL_NORMAL) {
+                // check if current character is a control character
+                if(iscntrl(c[j])) {
+                    char sym = (c[j] <= 26) ? '@' + c[j] : '?';
+                    abAppend(ab, "\x1b[7m", 4);
+                    abAppend(ab, &sym, 1);
+                    abAppend(ab, "\x1b[m", 2);
+                    if(current_color != -1) {
+                        char buf[16];
+                        int cLen = snprintf(buf, sizeof(buf), "\x1b[%dm", current_color);
+                        abAppend(ab, buf, cLen);
+                    }
+                } else if (hl[j] == HL_NORMAL) {
                     if (current_color != -1) {
                         abAppend(ab, "\x1b[39m", 5); // default text color
                         current_color = -1;
