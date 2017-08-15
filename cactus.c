@@ -47,7 +47,15 @@ enum editorHighlight {
     HL_MATCH
 };
 
+#define HL_HIGHLIGHT_NUMBERS (1<<0)
+
 /*** data ***/
+
+struct editorSyntax {
+    char *filetype;
+    char **filematch;
+    int flags;
+};
 
 // editor row
 typedef struct erow {
@@ -72,10 +80,26 @@ struct editorConfig {
     char *filename; // filename for status bar
     char statusmsg[80];
     time_t statusmsg_time;
+    struct editorSyntax *syntax; // pointer to the current editorsyntax struct
     struct termios orig_termios; // original terminal attributes
 };
 
 struct editorConfig E;
+
+/*** filetypes ***/
+
+char *C_HL_extensions[] = { ".c", ".h", ".cpp", NULL };
+
+// highlight database
+struct editorSyntax HLDB[] = {
+    {
+        "c",
+        C_HL_extensions,
+        HL_HIGHLIGHT_NUMBERS
+    },
+};
+
+#define HLDB_ENTRIES (sizeof(HLDB) / sizeof(HLDB[0]))
 
 /*** prototypes ***/
 
@@ -102,12 +126,12 @@ void die(const char *s) {
 
 void disableRawMode() {
     if(tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios) == -1)
-        die("tcsetattr");
+    die("tcsetattr");
 }
 
 void enableRawMode() {
     if(tcgetattr(STDIN_FILENO, &E.orig_termios) == -1)
-        die("tcgetattr");
+    die("tcgetattr");
     atexit(disableRawMode); // callsdisableRawMode automatically when program exits
 
     struct termios raw = E.orig_termios;
@@ -132,7 +156,7 @@ void enableRawMode() {
     raw.c_cc[VTIME] = 1; // set maximum amount of time to wait before read() returns
 
     if(tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1)
-        die("tcsetattr");
+    die("tcsetattr");
 }
 
 // wait for one keypress and return it
@@ -235,6 +259,8 @@ void editorUpdateSyntax(erow *row) {
     // set all characters to HL_NORMAL by default
     memset(row->hl, HL_NORMAL, row->rsize);
 
+    if (E.syntax == NULL) return;
+
     int prevSep = 1; // keep track if the previous character is a seperator
 
     int i = 0;
@@ -242,12 +268,14 @@ void editorUpdateSyntax(erow *row) {
         char c = row->render[i];
         unsigned char prev_hl = (i > 0) ? row->hl[i - 1] : HL_NORMAL;
 
-        if ((isdigit(c) && (prevSep || prev_hl == HL_NUMBER)) ||
+        if (E.syntax->flags & HL_HIGHLIGHT_NUMBERS) {
+            if ((isdigit(c) && (prevSep || prev_hl == HL_NUMBER)) ||
             (c == '.' && prev_hl == HL_NUMBER)) {
-            row->hl[i] = HL_NUMBER;
-            i++;
-            prevSep = 0;
-            continue;
+                row->hl[i] = HL_NUMBER;
+                i++;
+                prevSep = 0;
+                continue;
+            }
         }
 
         prevSep = is_seperator(c);
@@ -261,6 +289,34 @@ int editorSyntaxToColor(int hl) {
         case HL_NUMBER: return 31; // return red for numbers
         case HL_MATCH: return 34; // return blue for search result
         default: return 37; // return white for anything else
+    }
+}
+
+// match current filename to filematch field in HLDB
+void editorSelectSyntaxHighlight() {
+    E.syntax = NULL;
+    if (E.filename == NULL) return;
+
+    char *ext = strrchr(E.filename, '.');
+
+    for(unsigned int j = 0; j < HLDB_ENTRIES; j++) {
+        struct editorSyntax *s = &HLDB[j];
+        unsigned int i = 0;
+        while(s->filematch[i]) {
+            int is_ext = (s->filematch[i][0] == '.');
+            if((is_ext && ext && !strcmp(ext, s->filematch[i])) ||
+                (!is_ext && strstr(E.filename, s->filematch[i]))) {
+                E.syntax = s;
+
+                int fileRow;
+                for(fileRow = 0; fileRow < E.numRows; fileRow++) {
+                    editorUpdateSyntax(&E.row[fileRow]);
+                }
+
+                return;
+            }
+            i++;
+        }
     }
 }
 
@@ -485,6 +541,8 @@ void editorOpen(char *filename) {
     free(E.filename);
     E.filename = strdup(filename);
 
+    editorSelectSyntaxHighlight();
+
     // read and display the first line of the file
     FILE *fp = fopen(filename, "r");
     if (!fp) die("fopen");
@@ -496,7 +554,7 @@ void editorOpen(char *filename) {
     // read entire file into E.row
     while((linelen = getline(&line, &linecap, fp)) != -1) {
         while(linelen > 0 && (line[linelen -1] == '\n' || line[linelen - 1] == '\r'))
-            linelen--;
+        linelen--;
         editorInsertRow(E.numRows, line, linelen);
     }
     free(line);
@@ -513,6 +571,7 @@ void editorSave() {
             editorSetStatusMessage("Save aborted");
             return;
         }
+        editorSelectSyntaxHighlight();
     }
 
     int len;
@@ -742,9 +801,11 @@ void editorDrawStatusBar(struct abuf *ab) {
     abAppend(ab, "\x1b[7m", 4);
     char status[80], rstatus[80];
     int len = snprintf(status, sizeof(status), "%.20s - %d lines %s",
-        E.filename ? E.filename : "[No Name]", E.numRows,
-        E.dirty ? "(modified)" : "");
-    int rLen = snprintf(rstatus, sizeof(rstatus), "%d/%d", E.cy + 1, E.numRows);
+    E.filename ? E.filename : "[No Name]", E.numRows,
+    E.dirty ? "(modified)" : "");
+    int rLen = snprintf(rstatus, sizeof(rstatus), "%s | %d/%d",
+    E.syntax ? E.syntax->filetype : "no ft",
+    E.cy + 1, E.numRows);
     if(len > E.screenCols) len = E.screenCols;
     abAppend(ab, status, len);
     while (len < E.screenCols) {
@@ -765,7 +826,7 @@ void editorDrawMessageBar(struct abuf *ab) {
     int msglen = strlen(E.statusmsg);
     if(msglen > E.screenCols) msglen = E.screenCols;
     if(msglen && time(NULL) - E.statusmsg_time < 5)
-        abAppend(ab, E.statusmsg, msglen);
+    abAppend(ab, E.statusmsg, msglen);
 }
 
 void editorRefreshScreen() {
@@ -854,33 +915,33 @@ void editorMoveCursor(int key) {
 
     switch(key) {
         case ARROW_LEFT:
-            if(E.cx != 0) {
-                E.cx--;
-            } else if(E.cy > 0) {
-                // allow user to press '<-' at beginning of line to move to end of previous line
-                E.cy--;
-                E.cx = E.row[E.cy].size;
-            } else if(row && E.cx == row->size) {
-                // allow user to press '->' at the end of line to go to beginning of next line
-                E.cy++;
-                E.cx = 0;
-            }
-            break;
+        if(E.cx != 0) {
+            E.cx--;
+        } else if(E.cy > 0) {
+            // allow user to press '<-' at beginning of line to move to end of previous line
+            E.cy--;
+            E.cx = E.row[E.cy].size;
+        } else if(row && E.cx == row->size) {
+            // allow user to press '->' at the end of line to go to beginning of next line
+            E.cy++;
+            E.cx = 0;
+        }
+        break;
         case ARROW_RIGHT:
-            if(row && E.cx < row->size) {
-                E.cx++;
-            }
-            break;
+        if(row && E.cx < row->size) {
+            E.cx++;
+        }
+        break;
         case ARROW_UP:
-            if(E.cy != 0) {
-                E.cy--;
-            }
-            break;
+        if(E.cy != 0) {
+            E.cy--;
+        }
+        break;
         case ARROW_DOWN:
-            if(E.cy < E.numRows) {
-                E.cy++;
-            }
-            break;
+        if(E.cy < E.numRows) {
+            E.cy++;
+        }
+        break;
     }
 
     // snap cursor to the end of line
@@ -900,77 +961,77 @@ void editorProcessKeypress() {
     switch(c) {
         // ignore enter key
         case '\r':
-            editorInsertNewLine();
-            break;
+        editorInsertNewLine();
+        break;
 
         case CTRL_KEY('q'):
-            if (E.dirty && quitTimes > 0) {
-                editorSetStatusMessage("WARNING!!! File has unsaved changes. Press Ctrl-Q %d more times to quit.", quitTimes);
-                quitTimes--;
-                return;
-            }
-            write(STDOUT_FILENO, "\x1b[2J", 4);
-            write(STDOUT_FILENO, "\x1b[H", 3);
-            exit(0);
-            break;
+        if (E.dirty && quitTimes > 0) {
+            editorSetStatusMessage("WARNING!!! File has unsaved changes. Press Ctrl-Q %d more times to quit.", quitTimes);
+            quitTimes--;
+            return;
+        }
+        write(STDOUT_FILENO, "\x1b[2J", 4);
+        write(STDOUT_FILENO, "\x1b[H", 3);
+        exit(0);
+        break;
 
         case CTRL_KEY('s'):
-            editorSave();
-            break;
+        editorSave();
+        break;
 
         case HOME_KEY:
-            E.cx = 0;
-            break;
+        E.cx = 0;
+        break;
 
         case END_KEY:
-            if(E.cy < E.numRows) {
-                E.cx = E.row[E.cy].size;
-            }
-            break;
+        if(E.cy < E.numRows) {
+            E.cx = E.row[E.cy].size;
+        }
+        break;
 
         case CTRL_KEY('f'):
-            editorFind();
-            break;
+        editorFind();
+        break;
 
         // handle backspace or delete key
         case BACKSPACE:
         case CTRL_KEY('h'):
         case DEL_KEY:
-            if (c == DEL_KEY) editorMoveCursor(ARROW_RIGHT);
-            editorDelChar();
-            break;
+        if (c == DEL_KEY) editorMoveCursor(ARROW_RIGHT);
+        editorDelChar();
+        break;
 
         case PAGE_UP:
         case PAGE_DOWN:
-            {
-                if(c == PAGE_UP) {
-                    E.cy = E.rowOff;
-                } else if(c == PAGE_DOWN) {
-                    E.cy = E.rowOff + E.screenRows - 1;
-                    if(E.cy > E.numRows) E.cy = E.numRows;
-                }
-
-                int times = E.screenRows;
-                while(times--)
-                    editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
+        {
+            if(c == PAGE_UP) {
+                E.cy = E.rowOff;
+            } else if(c == PAGE_DOWN) {
+                E.cy = E.rowOff + E.screenRows - 1;
+                if(E.cy > E.numRows) E.cy = E.numRows;
             }
-            break;
+
+            int times = E.screenRows;
+            while(times--)
+            editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
+        }
+        break;
 
         case ARROW_UP:
         case ARROW_DOWN:
         case ARROW_LEFT:
         case ARROW_RIGHT:
-            editorMoveCursor(c);
-            break;
+        editorMoveCursor(c);
+        break;
 
         // do nothing with the ctrl-l and escape keys
         case CTRL_KEY('l'):
         case '\x1b':
-            break;
+        break;
 
         default:
-            editorInsertChar(c);
-            break;
+        editorInsertChar(c);
+        break;
     }
 
     quitTimes = CACTUS_QUIT_TIMES;
@@ -991,6 +1052,7 @@ void initEditor() {
     E.filename = NULL;
     E.statusmsg[0] = '\0';
     E.statusmsg_time = 0;
+    E.syntax = NULL; // no filetype so no syntax highlighting
 
     if (getWindowSize(&E.screenRows, &E.screenCols) == -1) die("getWindowSize");
     E.screenRows -= 2;
